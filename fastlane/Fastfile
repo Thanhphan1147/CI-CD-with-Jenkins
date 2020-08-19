@@ -1,0 +1,156 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#
+#     https://docs.fastlane.tools/plugins/available-plugins
+#
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:ios)
+
+platform :ios do
+
+  ### PRE BUILD ###
+
+  private_lane :pre_build do
+    ensure_git_status_clean
+    increment_build_number
+    # version = increment_version_number
+  end
+
+  private_lane :pre_build_new_version do
+    ensure_git_status_clean
+    increment_build_number
+    version = increment_version_number
+    sh("echo", "Increased version number to : $version")
+  end
+
+  ### LANES ###
+
+  #### match ####
+
+  desc "Pull certificate information from app store connect"
+  lane :pre_build_sign do
+    # This will fetch app store connect certificates and install required provisioning profiles
+    sigh
+  end
+
+  #### beta lane - deprecated ####
+
+  desc "Push a new beta build to TestFlight"
+  lane :beta do
+    update_code_signing_settings(path: "CICD.xcodeproj" ,use_automatic_signing: false)
+    gym(
+      skip_profile_detection: true,
+      export_method: "development",
+      clean: true,
+      export_options:{
+        compileBitcode: false,
+        signingStyle: "manual",
+        provisioningProfiles:{
+          "vn.vnpt.CICD": "match Development vn.vnpt.CICD"
+        }
+      }
+    )
+    pilot
+  end
+
+  #### build and sign ipa ####
+
+  desc "Build and sign the app using an ios distribution profile"
+  lane :build do
+
+    pre_build
+
+    update_code_signing_settings(path: "CICD.xcodeproj" ,use_automatic_signing: false)
+    gym(
+      output_directory: "./build",
+      clean: true,
+      export_options:{
+        compileBitcode: false,
+        signingStyle: "manual",
+        provisioningProfiles:{
+          "vn.vnpt.CICD": "testCICD"
+        }
+      }
+    )
+
+    post_build(lane: "build")
+  end
+
+  #### build with automatic signing by xcode ####
+  lane :autobuild do
+    pre_build
+
+    gym(
+      output_directory: "./build",
+      clean: true
+    )
+
+    post_build
+  end
+  #### distribution lane ####
+
+  desc "upload the app to testflight"
+  lane :release do
+
+    pilot(
+      ipa: "build/CICD.ipa",
+      skip_waiting_for_build_processing: true
+    )
+
+    post_release
+  end
+
+  ### POST BUILD ###
+
+  # This lane is called, only if the executed lane was successful
+  private_lane :post_build do |options|
+    lane = options[:lane]
+
+    sh("echo", "Running post build actions")
+    build = Actions.lane_context[Actions::SharedValues::BUILD_NUMBER]
+
+    commit_version_bump(
+      message: "[fastlane] [skip ci] Incremented build number for build #{build}",
+      no_verify: true
+    )
+
+    # this is broken for the moment # TODO: fix it
+    push_to_git_remote(
+      remote: "origin",         # optional, default: "origin"
+      local_branch: "HEAD",  # optional, aliased by "branch", default: "master"
+      remote_branch: "master", # optional, default is set to local_branch
+      force: true,    # optional, default: false
+      tags: true     # optional, default: true
+    )
+
+    notification(
+      title: "Build status",
+      message: "Build '#{build}' finished successfully",
+      open: "http://localhost"
+    ) # Mac OS X Notification
+  end
+
+  private_lane :post_release do
+    notification(
+      title: "TestFlight upload status",
+      message: "successfully uploaded to testflight"
+    ) # Mac OS X Notification
+  end
+
+  error do |lane, exception|
+    notification(
+      title: "Build error",
+      message: "Error occured in lane : '#{lane}'"
+    )
+  end
+
+end
