@@ -6,7 +6,7 @@ MacOS
 brew install jenkins-lts
 brew service start jenkins-lts
 ```
-Jenkins will be available at http://localhost:8080
+Jenkins will be available at `http://localhost:8080`
 #### First-time Jenkins configuration
 A number of environment variables need to be set in order for jenkins to work properly, go to **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** and set the following:
 ```
@@ -85,9 +85,9 @@ To have your Fastfile configuration written in Swift (Beta):
 bundle exec fastlane init swift
 ```
 The command will automatically find the app that has the same bundle id as your project and create a `fastlane/` folder in your project's root directory:
-![Fast](https://raw.githubusercontent.com/Thanhphan1147/images/master/fastlane.png)
+![Fast](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/fastlane.png)
 
-In fastlane you use `increment_build_number` for versioning, `gym` to build and sign your ipa and `pilot` to deploy the app to testflight. They can be run in the CLI but it is recommended to put them in a `Fastfile`, full example can be found [here](https://github.com/Thanhphan1147/images/blob/master/fastlane/Fastfile).
+In fastlane you use `increment_build_number` for versioning, `gym` to build and sign your ipa and `pilot` to deploy the app to testflight. They can be run in the CLI but it is recommended to put them in a `Fastfile`, full example can be found [here](https://github.com/Thanhphan1147/CI-CD-with-Jenkins/blob/master/fastlane/Fastfile).
 
 #### Bump the build number 
 The `increment_build_number` action are called before `gym` and `push_to_git_remote` is called after the build completed successfully
@@ -253,14 +253,14 @@ In Jenkins, use JSONpath to get push related information. They can be use to fil
 * Information on the POST request sent to jenkins from a SCM can be obtain by reading their docs / using a proxy or a tunnel like [ngrok]
 
 The values need to be assigned to an environment variable (**Build Trigger** > **Generic webhook trigger** > **Add post content parameter**) and the variables can be used across the build process. 
-![jsonpath](https://raw.githubusercontent.com/Thanhphan1147/images/master/jsonpath.png)
+![jsonpath](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/jsonpath.png)
 
 To prevent commits by fastlane to trigger a build loop, use a custom git `username` and `email` for jenkins, and filter out this jenkins username using `regex` in the **Optional filter** section
 ```
 expression: ^((?!(jenkins|placeholder)).)*$
 text: <your variable>
 ```
-![filter](https://raw.githubusercontent.com/Thanhphan1147/images/master/filter.png)
+![filter](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/filter.png)
 
 #### Useful tools
 * [Regexp] tester
@@ -269,7 +269,7 @@ text: <your variable>
 
 [//]: # (These are reference links used in the body of this note and get stripped out when the markdown processor does its job. There is no need to format nicely because it shouldn't be seen. Thanks SO - http://stackoverflow.com/questions/4823468/store-comments-in-markdown-syntax)
    
-   [icon]: <https://raw.githubusercontent.com/Thanhphan1147/images/master/icon.png>
+   [icon]: <https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/icon.png>
    [ngrok]: <https://ngrok.com>
    [Regexp]: <https://www.regextester.com/15>
    [JSON path]: <https://jsonpathfinder.com>
