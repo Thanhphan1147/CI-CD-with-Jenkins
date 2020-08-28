@@ -11,14 +11,15 @@ Jenkins will be available at `http://localhost:8080`
 A number of environment variables need to be set in order for jenkins to work properly, go to **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** and set the following:
 ```
 ANDROID_SDK_ROOT = <location of your android sdk> 
-PATH = <your shell's path variable> (echo $PATH)
+PATH = <your shell's path variable> 
+(you can get you shell's path variable by running echo $PATH) in your terminal
 ```
 Plugins for jenkins:
 - Generic web-hook trigger
 - Locale
 - On windows: powershell
 - ANSI color
-- Rebuild
+- Rebuilder
 
 If you are not using fastlane:
 
@@ -35,7 +36,7 @@ If you are not using fastlane:
 bundle update
 bundle exec fastlane --version
 ```
-3. Have a reade-to-build and deploy iOS app.
+3. Have a ready-to-build and deploy iOS app.
 4. Have a valid appstore distribution and development certificate their corresponding provisioning profiles.
 
 It is recommended to manualy sign your code and use `match` to handle your certificates and profiles. A guide to match can be found [here](https://docs.fastlane.tools/actions/match/)
@@ -43,11 +44,14 @@ It is recommended to manualy sign your code and use `match` to handle your certi
 ### Jenkins-ios
 #### Create a new pipeline
 > Follow the official jenkins tutorial: https://www.jenkins.io/doc/pipeline/tour/getting-started/
-Note that the official tutorial focus on creating a `pipeline` which requires the use of a `Jenkinsfile`. However, the commands that we in a **build step** of a `freestyle project` can be easily put into a `Jenkinsfile` and vice-versa  
+Note that the official tutorial focus on creating a `pipeline` which requires the use of a `Jenkinsfile`. However, the commands that we use in a **build step** of a `freestyle project` can be easily converted to a **step** in a `Jenkinsfile` and vice-versa  
 
 Go to `http://localhost:8080` on your browser, click on **New item** > **Freestyle project** and enter a name.
 Fastlane uses ANSI encoding for colored output, therefore you should enable ANSI color console output in **Build Enviroment**.
 #### Setup a webhook
+from `https://developer.github.com/webhooks/`:
+> Webhooks allow you to build or set up integrations, which subscribe to certain events. When one of those events is triggered, we'll send a HTTP POST payload to the webhook's configured URL. Webhooks can be used to update an external issue tracker, trigger CI builds, update a backup mirror, or even deploy to your production server. You're only limited by your imagination.
+
 > Follow the bitbucket tutorial for managing webhooks : https://confluence.atlassian.com/bitbucketserver/managing-webhooks-in-bitbucket-server-938025878.html
 
 Using a webhook causes an infinite loop of build triggers when you push from jenkins to the remote in the middle of the pipeline, see this [section](#build-loop) to see how to fix this problem.
@@ -56,13 +60,14 @@ Using a webhook causes an infinite loop of build triggers when you push from jen
 If your git server doesn't support webhooks (Outdated, privacy policy, ...) you can create a simple `post-receive` hook script in your remote repository that will run after every push to the remote repository.
 
 > Explanation on git hooks: https://git-scm.com/docs/githooks
-> Required decent knowledge about shell scripting
+> Required knowledge about shell scripting
 
 Sample script:
 ```sh
 author=$(git log -1 --pretty=format:'%an')                                  # get the author of latest commit
 repository=<"name of repository slug">
 branch=$(git name-rev $(git log -1 --pretty='format:%C(auto)%h'))           # get the branch name that was pushed to
+
 # processing (doesn't send trigger if branch != "master", check if author == "jenkins" , ...)
 
 # Trigger the build
@@ -87,10 +92,12 @@ bundle exec fastlane init swift
 The command will automatically find the app that has the same bundle id as your project and create a `fastlane/` folder in your project's root directory:
 ![Fast](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/fastlane.png)
 
-In fastlane you use `increment_build_number` for versioning, `gym` to build and sign your ipa and `pilot` to deploy the app to testflight. They can be run in the CLI but it is recommended to put them in a `Fastfile`, full example can be found [here](https://github.com/Thanhphan1147/CI-CD-with-Jenkins/blob/master/fastlane/Fastfile).
+>fastlane is the easiest way to automate beta deployments and releases for your iOS and Android apps. 🚀 It handles all tedious tasks, like generating screenshots, dealing with code signing, and releasing your application.
+
+For an IOS app you use `increment_build_number` for versioning, `gym` to build and sign your ipa and `pilot` to deploy the app to testflight. They can be run in the CLI but it is recommended to put them in a `Fastfile`, full example can be found [here](https://github.com/Thanhphan1147/CI-CD-with-Jenkins/blob/master/fastlane/Fastfile).
 
 #### Bump the build number 
-The `increment_build_number` action are called before `gym` and `push_to_git_remote` is called after the build completed successfully
+`increment_build_number` is called before `gym` and `push_to_git_remote` is called after the build completed successfully
 ```ruby
 private_lane :<before-build-lane> do
 
