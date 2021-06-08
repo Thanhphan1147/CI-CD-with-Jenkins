@@ -1,50 +1,50 @@
+## This repo stores images used in this markdown document ##
 # Jenkins
-#### Tải xuống jenkins
+#### Download jenkins
 MacOS
 ```sh
 brew install jenkins-lts
 brew service start jenkins-lts
 ```
-Truy cập jenkins tại `http://localhost:8080`
-#### Cấu hình Jenkins lần đầu
-Một số biến môi trường cần được đặt để jenkins hoạt động bình thường, hãy đi tới **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** và đặt như sau:
+Jenkins will be available at `http://localhost:8080`
+#### First-time Jenkins configuration
+A number of environment variables need to be set in order for jenkins to work properly, go to **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** and set the following:
 ```
 ANDROID_SDK_ROOT = <location of your android sdk> 
 PATH = <your shell's path variable> 
+(you can get you shell's path variable by running echo $PATH) in your terminal
 ```
-- (bạn có thể lấy biến PATH của shell bằng cách chạy echo $ PATH) trong terminal
-
-Plugin cho jenkins:
+Plugins for jenkins:
 - Generic web-hook trigger
 - Locale
 - On windows: powershell
 - ANSI color
 - Rebuilder
 
-Nếu bạn không sử dụng fastlane:
+If you are not using fastlane:
 
 - Google play Android publisher
 - Google Play OAuth Credentials
 - Android app signing
 
-## Xây dựng pipeline cho iOS
-### Thiết lập
-#### Điều kiện tiên quyết
-1. Đảm bảo jenkins đang chạy bằng cách điều hướng đến `http://localhost:8080` trên trình duyệt của bạn.
-2. Kiểm tra cài đặt fastlane của bạn:
+## Build a pipeline for iOS
+### Setup
+#### Pre-requisites
+1. Make sure jenkins is running by navigate to `http://localhost:8080` on your browser.
+2. Check your fastlane installation: 
 ```shell
 bundle update
 bundle exec fastlane --version
 ```
-3. Chuẩn bị sẵn một ứng dụng iOS để xây dựng và triển khai.
-4. Có chứng chỉ phát triển và phân phối ứng dụng app-store hợp lệ và hồ sơ cấp phép tương ứng.
+3. Have a ready-to-build and deploy iOS app.
+4. Have a valid appstore distribution and development certificate their corresponding provisioning profiles.
 
-Bạn nên ký app theo cách thủ công và sử dụng `match` để xử lý các chứng chỉ và hồ sơ của bạn. Hướng dẫn cho `match` có thể được tìm thấy [tại đây](https://docs.fastlane.tools/actions/match/)
+It is recommended to manualy sign your code and use `match` to handle your certificates and profiles. A guide to match can be found [here](https://docs.fastlane.tools/actions/match/)
 
 ### Jenkins-ios
-#### Tạo một pipeline mới
-> Làm theo hướng dẫn chính thức của jenkins: https://www.jenkins.io/doc/pipeline/tour/getting-started/
-Lưu ý rằng hướng dẫn chính thức tập trung vào việc tạo một `pipeline` yêu cầu sử dụng một `Jenkinsfile`. Tuy nhiên, các lệnh mà chúng tôi sử dụng trong bước **build** của một `freestyle project` có thể dễ dàng chuyển đổi thành **step** trong `Jenkinsfile` và ngược lại
+#### Create a new pipeline
+> Follow the official jenkins tutorial: https://www.jenkins.io/doc/pipeline/tour/getting-started/
+Note that the official tutorial focus on creating a `pipeline` which requires the use of a `Jenkinsfile`. However, the commands that we use in a **build step** of a `freestyle project` can be easily converted to a **step** in a `Jenkinsfile` and vice-versa  
 
 Go to `http://localhost:8080` on your browser, click on **New item** > **Freestyle project** and enter a name.
 Fastlane uses ANSI encoding for colored output, therefore you should enable ANSI color console output in **Build Enviroment**.

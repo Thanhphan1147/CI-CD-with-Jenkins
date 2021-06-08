@@ -1,53 +1,305 @@
-## This repo stores images used in this markdown document ##
 # Jenkins
-#### Download jenkins
-MacOS
+## Setup
+#### Tải jenkins
+Trên macOS tải Jenkins bằng homebrew
 ```sh
 brew install jenkins-lts
-brew service start jenkins-lts
 ```
-Jenkins will be available at `http://localhost:8080`
-#### First-time Jenkins configuration
-A number of environment variables need to be set in order for jenkins to work properly, go to **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** and set the following:
+#### Giao diện web
+Giao diện web của Jenkins mặc định nghe trên localhost. Để vào được Jenkins qua mạng LAN thì sửa trường httpListenAddress ở `~/Library/LaunchAgents/homebrew.mxcl.jenkins-lts.plist` từ `127.0.0.1` sang `0.0.0.0`. File này được tạo ra khi khởi động service jenkins bằng homebrew.
+
+```sh
+brew services start jenkins-lts
+file=~/Library/LaunchAgents/homebrew.mxcl.jenkins-lts.plist
+cp $file ~/tempfile
+brew services stop jenkins-lts
+perl -0777 -pe 's/(<string>--httpListenAddress=)(.*)(<\/string>)/$1"0.0.0.0"$3/' ~/tempfile
+mv ~tempfile $file
 ```
-ANDROID_SDK_ROOT = <location of your android sdk> 
-PATH = <your shell's path variable> 
-(you can get you shell's path variable by running echo $PATH) in your terminal
+
+Sau đó chạy jenkins (file config cần thuộc user root và nhóm wheel): 
+```sh
+file=~/Library/LaunchAgent/homebrew.mxcl.jenkins-lts.plist
+sudo chown root $file
+sudo chgrp wheel $file
+sudo systemctl load $file
 ```
-Plugins for jenkins:
+
+Truy cập jenkins tại `http://localhost:8080` và làm theo hướng dẫn để thiết lập lần đầu, tạo tài khoản admin và cài plugin (cài những plugin được recommended)
+
+#### Cấu hình Jenkins lần đầu
+Thêm biến môi trường ở **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** , `Chú ý jenkins sẽ ko chạy được nếu ko có 2 biến này` : 
+```
+ANDROID_SDK_ROOT = Thông thưởng ở trên mac nó sẽ ở ~/Library/Android/sdk 
+PATH = Chạy lệnh echo $PATH trên terminal và copy kết quả vào đây 
+```
+Ví dụ : 
+![envar](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/envar.png)
+
+Plugin cho jenkins:
 - Generic web-hook trigger
 - Locale
-- On windows: powershell
 - ANSI color
 - Rebuilder
 
-If you are not using fastlane:
+#### Fastlane 
+Tải ruby và bundler 
 
-- Google play Android publisher
-- Google Play OAuth Credentials
-- Android app signing
+```sh
+# Tải rbenv để quản lý phiên bản ruby
+brew install rbenv
+rbenv init
+# Script check xem mọi thứ có ok không 
+curl -fsSL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-doctor| bash
+# Cài bản ruby 2.7.3
+rbenv install 2.7.3
+# Chuyển sang dùng bản 2.7.3
+rbenv global 2.7.3
+# Cài bundler, nếu có ruby thì mới chạy được lệnh gem
+gem install bundler
+```
+Thêm Gemfile để dùng bundler (Trên repo của OneFarm đã có sẵn Gemfile):
+```ruby
+# Đặt tên file là Gemfile
+source "https://rubygems.org"
 
-## Build a pipeline for iOS
-### Setup
-#### Pre-requisites
-1. Make sure jenkins is running by navigate to `http://localhost:8080` on your browser.
-2. Check your fastlane installation: 
-```shell
+gem "fastlane"
+```
+Chạy lệnh để cài fastlane sau khi đã có Gemfile
+```sh
+bundle install
+```
+Tạo một Fastfile ở trong fastlane/Fastfile, onefarm ios và android đã có sẵn Fastfile cùng các custom action. tất cả các file cần thiết đều nằm trong thư mục `fastlane\`
+
+#### Flutter
+
+### Kiểm tra
+1. Kiểm tra jenkins đang chạy trên `http://localhost:8080`
+2. Kiểm tra bundler và fastlane
+```sh
+bundle --version
 bundle update
 bundle exec fastlane --version
 ```
-3. Have a ready-to-build and deploy iOS app.
-4. Have a valid appstore distribution and development certificate their corresponding provisioning profiles.
 
-It is recommended to manualy sign your code and use `match` to handle your certificates and profiles. A guide to match can be found [here](https://docs.fastlane.tools/actions/match/)
+3. Kiểm tra flutter
+```sh
+flutter doctor
+```
 
-### Jenkins-ios
-#### Create a new pipeline
-> Follow the official jenkins tutorial: https://www.jenkins.io/doc/pipeline/tour/getting-started/
-Note that the official tutorial focus on creating a `pipeline` which requires the use of a `Jenkinsfile`. However, the commands that we use in a **build step** of a `freestyle project` can be easily converted to a **step** in a `Jenkinsfile` and vice-versa  
+4. Chuẩn bị app iOS và android
 
-Go to `http://localhost:8080` on your browser, click on **New item** > **Freestyle project** and enter a name.
-Fastlane uses ANSI encoding for colored output, therefore you should enable ANSI color console output in **Build Enviroment**.
+### Set up certificate và provisioning profile
+Các file cần có trước khi dùng match: 
+- certificate (.cer)
+- private key (.p12)
+- profile     (.mobileprovision)
+
+Ở trên mac, tải certificate xuống từ Apple Developper Portal, nhấn đúp để thêm vào keychain, rồi ấn chuột phải để export 2 file .cer và .key ra ngoài
+
+![keychain](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/keychain.png)
+
+Tải provisioning profile xuống cùng thư mục và khởi tạo match
+
+```sh
+bundle exec fastlane match init
+```
+
+Ấn enter khi được yêu cầu nhập url git, sau khi chạy xong lệnh thì sửa file Matchfile để đặt url git và branch để lưu các file trên 1 nhánh của repo (các file này sẽ được mã hoá trước khi push lên), ví dụ của onefarm. 
+
+```ruby
+git_url("https://stc.vnpt:afrrYW5GtbrxfN9b9DXE@gitlab.com/anhdv282/one_farm.git")
+git_branch("certificates")
+
+storage_mode("git")
+
+type("appstore")
+# type("adhoc") # The default type, can be: appstore, adhoc, enterprise or development
+
+app_identifier("vn.vnpt-technology.ONEFarm")
+username("stc.vnpt@gmail.com")
+```
+sửa trường type("appstore") sang type("adhoc") khi cần import provisioning profile để build adhoc 
+
+### Set up keystore và JSON key trên android
+Bắt buộc phải có service account để chạy CI cho app android. User có quyền **Admin** cần vào Google Play Console > API Access > Add Service Account và cấp quyền **Google Service Account** để tạo 1 service account được kết nối với google play console. Sau đó vào cài đặt của service account tạo 1 JSON key dùng để login vào google play bằng service account. Tải JSON key này xuống máy và lưu lại địa chỉ file.
+
+Tạo một keystore để sign app android bằng android studio. keystore này cũng nên được mã hoá và đẩy lên git.
+
+#### Lưu ý : 
+* Để upload được lên appstore thì app phải được ký bằng certificate loại iOS Distribution
+* Provisioning profile phải link với bundle id của app và iOS Distribution certificate
+* Đối với onefarm chỉ cần chạy `bundle exec fastlane match appstore` để cài cả 3 vì certificate và profile đã được import lên git.
+* Service account cần được cấp quyền service account mới hiện lên trên Google Play Console
+
+# Pipeline
+## Các password quan trọng cần lưu
+* Tên login và password của bitbucket hoặc api key
+* Apple App-specific Password để deploy lên testflight
+* JSON key của service account để đăng nhập vào google play console
+* đường dẫn đến file keystore và password của keystore 
+
+## Secret text
+Jenkins có môi trường lưu trữ mật khẩu mã hoá tại **Manage Jenkins** > **Credentials**. Thêm các mật khẩu và đặt key để lưu thành biến môi trường trong Jenkinsfile
+
+## Jenkinsfile
+Tạo 1 Jenkinsfile ở root của repo, ví dụ như Jenkinsfile của Onefarm : 
+```sh
+pipeline {
+    agent any
+    
+    options {
+    	# Load các plugins
+        ansiColor('xterm')
+    }
+    
+    environment {
+    	# Load các secret text và chuyển thành biến môi trường
+        KEYSTORE_PASSWORD = credentials('keystore_password')
+        KEY_STORE_LOCATION = credentials('key_store_location')
+        JSON_KEY_FILE = credentials('json_key_file')
+        APPLEID_APP_PASSWORD = credentials('apple-application-password')
+        GITLAB_API_KEY = credentials('gitlab_api_key')
+        SCM_BRANCH = 'stc_vnpt_dev_0.9'  
+
+    }   
+    stages {
+        stage('Fetch repo') {
+            steps {
+                git branch: "$SCM_BRANCH", url: "https://stc.vnpt:$GITLAB_API_KEY@gitlab.com/anhdv282/one_farm.git"            
+                sh('pwd')
+                script {
+                    currentBuild.description = "branch: $SCM_BRANCH"
+                    currentBuild.displayName = "ONE Farm CI: Pending..."
+                }
+            }
+        }
+        stage('Bump build number') {
+            steps {
+                sh '''cd one_farm/ios
+                bundle update
+                bundle update fastlane
+                bundle exec fastlane ios increment_flutter_version_code is_ci:true json_key:$JSON_KEY_FILE track:internal
+                bundle exec fastlane write_label
+                '''
+                script {
+                    def label = readFile(file: 'one_farm/buildlabel.txt')
+                    println(label)
+                    currentBuild.displayName = label
+                    currentBuild.description = "branch: $SCM_BRANCH"
+                }
+            }
+        }
+        stage('Build') {
+            parallel {
+                stage('Build and deploy iOS') {
+                    stages {
+                        stage('Pre build iOS') {
+                            steps {
+                                sh '''cd one_farm/ios
+                                bundle exec fastlane ios pre_build is_ci:true'''   
+                            }
+                        }
+                        stage('Flutter build iOS') {
+                            steps {
+                                sh'''cd one_farm/ios
+                                flutter build ios --release --no-codesign'''
+                            }
+                        }
+                        stage('Build and deploy to test flight') {
+                            steps {
+                                sh '''cd one_farm/ios
+                                # bundle exec fastlane beta is_ci:true
+                                '''
+                            }    
+                        }
+                    }
+                }
+                
+                stage('Build and deploy Android') {
+                    stages {
+                        stage('set up') {
+                            steps {
+                                sh'''cd one_farm/android
+                                bundle --version
+                                # bundle update'''
+                            }
+                        }
+                        stage('Write keystore config') {
+                            steps {
+                                sh '''cd one_farm/android
+                                echo "storePassword=$KEYSTORE_PASSWORD" > key.properties
+                                echo "keyPassword=$KEYSTORE_PASSWORD"  >> key.properties
+                                echo "keyAlias=upload" >> key.properties
+                                echo "storeFile=$KEY_STORE_LOCATION" >> key.properties
+                                cat key.properties'''
+                            }
+                        }
+                        stage('Flutter build aab') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                bundle exec fastlane build_aab is_ci:true'''
+                            }
+                        }
+                        stage('Flutter build apk') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                bundle exec fastlane build_apk is_ci:true'''
+                            }
+                        }
+                        stage('Upload google play') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                # bundle exec fastlane upload is_ci:true type:apk'''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build OTA for in-house distribution') {
+            stages {
+                stage('Pre build iOS') {
+                    steps {
+                        sh '''cd one_farm/ios
+                        flutter build ios --release --no-codesign'''   
+                    }
+                }
+                stage('Build OTA') {
+                    steps {
+                        sh '''cd one_farm/ios
+                        bundle exec fastlane build_ota is_ci:true'''   
+                    }
+                }
+            }
+            
+        }
+        
+        stage('Wrapping up') {
+            steps {
+                sh '''
+                git status --porcelain
+                git add one_farm/pubspec.yaml
+                git commit -m "[skip-ci] [fastlane] update build number"
+                git reflog
+                git remote
+                git branch
+                # git push gitlab
+                '''
+            }
+        }
+    }
+}
+
+```
+
+## Tạo pipeline
+Trên Jenkins, nhấn vào **New item** > **Multibranch Pipeline** để Jenkins tự tạo các jobs dựa theo Jenkinsfile trên repo.
+
 #### Setup a webhook
 from `https://developer.github.com/webhooks/`:
 > Webhooks allow you to build or set up integrations, which subscribe to certain events. When one of those events is triggered, we'll send a HTTP POST payload to the webhook's configured URL. Webhooks can be used to update an external issue tracker, trigger CI builds, update a backup mirror, or even deploy to your production server. You're only limited by your imagination.
