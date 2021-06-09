@@ -58,7 +58,7 @@ rbenv global 2.7.3
 # Cài bundler, nếu có ruby thì mới chạy được lệnh gem
 gem install bundler
 ```
-Thêm Gemfile để dùng bundler (Trên repo của OneFarm đã có sẵn Gemfile):
+Thêm Gemfile để dùng bundler:
 ```ruby
 # Đặt tên file là Gemfile
 source "https://rubygems.org"
