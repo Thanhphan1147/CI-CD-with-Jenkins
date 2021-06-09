@@ -416,7 +416,9 @@ Expression: ^((?!\[fastlane\]|\[skip ci]).)*$
 Text : $message
 ```
 
-![filter](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/filter.png)
+![filter_message](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/filter_message.png)
+
+Sau khi xong bước này thì ấn **Build now** để kiểm tra Pipeline sau đó push lên git để kiểm tra webhook.
 
 # Ví dụ Jenkinsfile và Fastfile của android và iOS
 Jenkinsfile : 
