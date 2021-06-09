@@ -69,9 +69,24 @@ Chạy lệnh để cài fastlane sau khi đã có Gemfile
 ```sh
 bundle install
 ```
-Tạo một Fastfile ở trong fastlane/Fastfile, onefarm ios và android đã có sẵn Fastfile cùng các custom action. tất cả các file cần thiết đều nằm trong thư mục `fastlane\`
+Tạo một Fastfile ở trong fastlane/Fastfile, onefarm ios và android đã có sẵn Fastfile cùng các custom action. tất cả các file cần thiết đều nằm trong thư mục `fastlane/`
 
 ### Flutter
+Tải flutter 2.2.1 cho macos tại [dây](https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_2.2.1-stable.zip)
+
+Sau đó unzip và thêm flutter vào path
+```sh
+cd ~/Documents
+unzip ~/Downloads/flutter_macos_2.2.1-stable.zip
+flutter_root=$(pwd)
+echo export PATH="$PATH:$flutter_root/flutter/bin" >> ~/.zshrc
+source ~/.zshrc
+```
+
+Kiểm tra flutter
+```sh
+flutter doctor
+```
 
 ### Kiểm tra
 1. Kiểm tra jenkins đang chạy trên `http://localhost:8080`
@@ -82,12 +97,7 @@ bundle update
 bundle exec fastlane --version
 ```
 
-3. Kiểm tra flutter
-```sh
-flutter doctor
-```
-
-4. Chuẩn bị app iOS và android
+3. Chuẩn bị app iOS và android
 
 ### Set up certificate và provisioning profile bằng match
 Các file cần có trước khi dùng match: 
