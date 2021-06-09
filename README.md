@@ -108,17 +108,18 @@ bundle exec fastlane match init
 Ấn enter khi được yêu cầu nhập url git, sau khi chạy xong lệnh thì sửa file Matchfile để đặt url git và branch để lưu các file trên 1 nhánh riêng của git (các file này sẽ được mã hoá trước khi push lên)
 
 ```ruby
-git_url("git_url")
-git_branch("git_branch")
+git_url("<git_url>")
+git_branch("<git_branch>")
 
 storage_mode("git")
 
 type("appstore")
 # type("adhoc") # The default type, can be: appstore, adhoc, enterprise or development
 
-app_identifier("bundle id")
-username("username")
+app_identifier("<bundle id>")
+username("<username>")
 ```
+Thay git_url, git_branch bằng url và branch của git, thay bundle_id bằng bundle id của app và thay username bằng username của git (vd: thanhpt)
 
 Sau đó tìm đường dẫn đến các file .cer .p12 .mobileprovision đã tải xuống ở bước trước rồi chạy lệnh 
 ```sh
