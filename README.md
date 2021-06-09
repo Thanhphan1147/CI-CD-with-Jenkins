@@ -105,10 +105,10 @@ Tải provisioning profile xuống cùng thư mục và khởi tạo match
 bundle exec fastlane match init
 ```
 
-Ấn enter khi được yêu cầu nhập url git, sau khi chạy xong lệnh thì sửa file Matchfile để đặt url git và branch để lưu các file trên 1 nhánh của repo (các file này sẽ được mã hoá trước khi push lên), ví dụ của onefarm. 
+Ấn enter khi được yêu cầu nhập url git, sau khi chạy xong lệnh thì sửa file Matchfile để đặt url git và branch để lưu các file trên 1 nhánh của repo (các file này sẽ được mã hoá trước khi push lên), theo như ví dụ của onefarm. 
 
 ```ruby
-git_url("https://stc.vnpt:afrrYW5GtbrxfN9b9DXE@gitlab.com/anhdv282/one_farm.git")
+git_url("git_url")
 git_branch("certificates")
 
 storage_mode("git")
@@ -116,8 +116,8 @@ storage_mode("git")
 type("appstore")
 # type("adhoc") # The default type, can be: appstore, adhoc, enterprise or development
 
-app_identifier("vn.vnpt-technology.ONEFarm")
-username("stc.vnpt@gmail.com")
+app_identifier("")
+username("")
 ```
 sửa trường type("appstore") sang type("adhoc") khi cần import provisioning profile để build adhoc 
 
