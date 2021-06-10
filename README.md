@@ -58,7 +58,11 @@ rbenv global 2.7.3
 # Cài bundler, nếu có ruby thì mới chạy được lệnh gem
 gem install bundler
 ```
-Thêm Gemfile để dùng bundler:
+Tạo 1 Gemfile tại root của project:
+```sh
+touch Gemfile
+```
+Sau đó thêm vào: 
 ```ruby
 # Đặt tên file là Gemfile
 source "https://rubygems.org"
