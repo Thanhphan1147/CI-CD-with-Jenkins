@@ -1,278 +1,910 @@
-## This repo stores images used in this markdown document ##
-# Jenkins
-#### Download jenkins
-MacOS
+# CI CD with Jenkins
+This guide provides you with everything you need to know in details to be able to set up a CI/CD pipeline for your iOS or Android development projects. This guide covers setting up and install Jenkins, fastlane and their components. You can also find, at the end, an example Jenkinsfile and Fastfile for a flutter project here at VNPT.
+## Setup
+#### Jenkins Installation
+Install Jenkins with homebrew on Mac OS
 ```sh
 brew install jenkins-lts
-brew service start jenkins-lts
 ```
-Jenkins will be available at `http://localhost:8080`
-#### First-time Jenkins configuration
-A number of environment variables need to be set in order for jenkins to work properly, go to **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** and set the following:
+#### Web interface
+Jenkins's default web interface listens on localhost. To access Jenkins via LAN change the httpListenAddress field in `~/Library/LaunchAgents/homebrew.mxcl.jenkins-lts.plist` from `127.0.0.1` to `0.0.0.0`. This file is generated automatically during Jenkins installation process.
+
+```sh
+brew services start jenkins-lts
+file=~/Library/LaunchAgents/homebrew.mxcl.jenkins-lts.plist
+cp $file ~/tempfile
+brew services stop jenkins-lts
+perl -0777 -pe 's/(<string>--httpListenAddress=)(.*)(<\/string>)/$1"0.0.0.0"$3/' ~/tempfile
+mv ~tempfile $file
 ```
-ANDROID_SDK_ROOT = <location of your android sdk> 
-PATH = <your shell's path variable> 
-(you can get you shell's path variable by running echo $PATH) in your terminal
+
+Then start the jenkins service (the configuration file requires `root:wheel` permission): 
+```sh
+file=~/Library/LaunchAgent/homebrew.mxcl.jenkins-lts.plist
+sudo chown root $file
+sudo chgrp wheel $file
+sudo systemctl load $file
 ```
-Plugins for jenkins:
+
+Jenkins is now accessible at `http://localhost:8080`. Follow the instructions on the web GUI to login as admin and install plugins (I suggest installing recommended plugins).
+
+#### Jenkins configuration
+Add environment variables at **Manage Jenkins** > **Configure System** > **Global properties** > **Environment variables** , `Note that these variables are crucial for the operation of Jenkins when building Android and iOS apps` : 
+```
+ANDROID_SDK_ROOT = ~/Library/Android/sdk 
+PATH = (run echo $PATH on your terminal and copy the result) 
+```
+Example : 
+![envar](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/envar.png)
+
+Jenkins plugins:
 - Generic web-hook trigger
 - Locale
-- On windows: powershell
 - ANSI color
 - Rebuilder
 
-If you are not using fastlane:
+#### Fastlane 
+Ruby and bundler installation: 
 
-- Google play Android publisher
-- Google Play OAuth Credentials
-- Android app signing
+```sh
+# Install rbenv for ruby version management
+brew install rbenv
+rbenv init
+# Check if everything is ok
+curl -fsSL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-doctor| bash
+# Install ruby 2.7.3
+rbenv install 2.7.3
+# Switch to version 2.7.3
+rbenv global 2.7.3
+# Install bundler, note that ruby is required to run gem
+gem install bundler
+```
+Create a Gemfile at project root:
+```sh
+touch Gemfile
+```
+Then add: 
+```ruby
+# Gemfile
+source "https://rubygems.org"
 
-## Build a pipeline for iOS
-### Setup
-#### Pre-requisites
-1. Make sure jenkins is running by navigate to `http://localhost:8080` on your browser.
-2. Check your fastlane installation: 
-```shell
+gem "fastlane"
+```
+fastlane installation with Gemfile
+```sh
+bundle install
+```
+Now we create a Fastfile in fastlane/Fastfile, VNPT's iOS and android projects already have a Fastfile with its custom actions. Note that everything fastlane-related is in `fastlane/`
+
+### Flutter
+Flutter 2.2.1 macos installation :  [link](https://storage.googleapis.com/flutter_infra_release/releases/stable/macos/flutter_macos_2.2.1-stable.zip)
+
+Unzip and add flutter to PATH
+```sh
+cd ~/Documents
+unzip ~/Downloads/flutter_macos_2.2.1-stable.zip
+flutter_root=$(pwd)
+echo export PATH="$PATH:$flutter_root/flutter/bin" >> ~/.zshrc
+source ~/.zshrc
+```
+
+Check if flutter works
+```sh
+flutter doctor
+```
+
+### Testing
+1. Verify that Jenkins is running on `http://localhost:8080`
+2. Check that bundler and fastlane is working and are of correct version
+```sh
+bundle --version
 bundle update
 bundle exec fastlane --version
 ```
-3. Have a ready-to-build and deploy iOS app.
-4. Have a valid appstore distribution and development certificate their corresponding provisioning profiles.
 
-It is recommended to manualy sign your code and use `match` to handle your certificates and profiles. A guide to match can be found [here](https://docs.fastlane.tools/actions/match/)
+3. Setting up build environement for iOS and Android apps
 
-### Jenkins-ios
-#### Create a new pipeline
-> Follow the official jenkins tutorial: https://www.jenkins.io/doc/pipeline/tour/getting-started/
-Note that the official tutorial focus on creating a `pipeline` which requires the use of a `Jenkinsfile`. However, the commands that we use in a **build step** of a `freestyle project` can be easily converted to a **step** in a `Jenkinsfile` and vice-versa  
+### Set up iOS certificate and provisioning profile with match
+Required file in order to run match: 
+- certificate (.cer)
+- private key (.p12)
+- profile     (.mobileprovision)
 
-Go to `http://localhost:8080` on your browser, click on **New item** > **Freestyle project** and enter a name.
-Fastlane uses ANSI encoding for colored output, therefore you should enable ANSI color console output in **Build Enviroment**.
-#### Setup a webhook
-from `https://developer.github.com/webhooks/`:
-> Webhooks allow you to build or set up integrations, which subscribe to certain events. When one of those events is triggered, we'll send a HTTP POST payload to the webhook's configured URL. Webhooks can be used to update an external issue tracker, trigger CI builds, update a backup mirror, or even deploy to your production server. You're only limited by your imagination.
+On mac, download your certificate from the Apple Developper Portal, double click to add it to your keychain keychain, then right-click to export the .cer and .key files.
 
-> Follow the bitbucket tutorial for managing webhooks : https://confluence.atlassian.com/bitbucketserver/managing-webhooks-in-bitbucket-server-938025878.html
+![keychain](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/keychain.png)
 
-Using a webhook causes an infinite loop of build triggers when you push from jenkins to the remote in the middle of the pipeline, see this [section](#build-loop) to see how to fix this problem.
+Put your downloaded provisioning profile in the same folder as match
 
-#### Alternatives to webhook
-If your git server doesn't support webhooks (Outdated, privacy policy, ...) you can create a simple `post-receive` hook script in your remote repository that will run after every push to the remote repository.
-
-> Explanation on git hooks: https://git-scm.com/docs/githooks
-> Required knowledge about shell scripting
-
-Sample script:
 ```sh
-author=$(git log -1 --pretty=format:'%an')                                  # get the author of latest commit
-repository=<"name of repository slug">
-branch=$(git name-rev $(git log -1 --pretty='format:%C(auto)%h'))           # get the branch name that was pushed to
-
-# processing (doesn't send trigger if branch != "master", check if author == "jenkins" , ...)
-
-# Trigger the build
-curl --location --request POST 'http://JENKINS_URL/generic-webhook-trigger/invoke?token=<your-token>' \
---header 'Content-Type: application/json' \
---data-raw '{"author", "$author", <post-content-parameter>": "<value>", ...'
+bundle exec fastlane match init
 ```
-In the bitbucket server's file system (You'll need admin priviledge on the server hosting bitbucket), name this script `21_post_receive` and store it in `shared/repositories/<slug-of-your-repo>/hooks/post_receive.d`
 
-### Fastlane
-> Follow the official fastlane tutorial for iOS : https://docs.fastlane.tools/getting-started/ios/setup/ 
-If you are not an admin or account holder on App Store Connect, It is recommended to register a new bundle id (follow [this](https://subscription.packtpub.com/book/application_development/9781786464507/18/ch18lvl1sec87/creating-a-bundle-identifier) tutorial) and have the app created by an admin beforehand. 
+Press enter when prompted for a git url, then edit Matchfile to save your certificates to a separate branch of your project (Files will be encrypted before being pushed to git)
 
-After that go to your project's root directory and run: 
-```sh
-bundle exec fastlane init
-```
-To have your Fastfile configuration written in Swift (Beta):
-```sh
-bundle exec fastlane init swift
-```
-The command will automatically find the app that has the same bundle id as your project and create a `fastlane/` folder in your project's root directory:
-![Fast](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/fastlane.png)
-
->fastlane is the easiest way to automate beta deployments and releases for your iOS and Android apps. 🚀 It handles all tedious tasks, like generating screenshots, dealing with code signing, and releasing your application.
-
-For an IOS app you use `increment_build_number` for versioning, `gym` to build and sign your ipa and `pilot` to deploy the app to testflight. They can be run in the CLI but it is recommended to put them in a `Fastfile`, full example can be found [here](https://github.com/Thanhphan1147/CI-CD-with-Jenkins/blob/master/fastlane/Fastfile).
-
-#### Bump the build number 
-`increment_build_number` is called before `gym` and `push_to_git_remote` is called after the build completed successfully
 ```ruby
-private_lane :<before-build-lane> do
+git_url("<git_url>")
+git_branch("<git_branch>")
 
-    ensure_git_status_clean
-    build = increment_build_number
-    version = increment_version_number
+storage_mode("git")
 
-end
+type("appstore")
+# type("adhoc") # The default type, can be: appstore, adhoc, enterprise or development
 
-private_lane :<after-build-lane> do |options|
+app_identifier("<bundle id>")
+username("<username>")
+```
+replace git_url, git_branch with your project's git url and the branch where you want to store your certificates (For example `certificates`), also replace bundle_id by your app's bundle id and username by your git username
 
-    lane = options[:lane]
-    build = Actions.lane_context[Actions::SharedValues::BUILD_NUMBER]
-    
-    commit_version_bump(
-      message: "[fastlane] [skip ci] Incremented build number for build #{build}",
-      no_verify: true
-    )
-    push_to_git_remote(
-      remote: "origin",             # optional, default: "origin"
-      local_branch: "HEAD",         # optional, aliased by "branch", default: "master"
-      remote_branch: "master",      # optional, default is set to local_branch
-      force: true,                  # optional, default: false
-      tags: true                    # optional, default: true
+Find the absolute path to the .cer .p12 .mobileprovision files that you downloaded and run: 
+```sh
+bundle exec fastlane match import
+```
+Provide the path to the files as required by match
+
+#### Note: 
+Change `type("appstore")` to `type("adhoc")` for OTA distribution. You will need ofcourse a different set of certificates and provisioning profiles.
+
+### Set up keystore and JSON key on android
+A service account is required to run CI for android apps. Users with **Admin** permission need to go to Google Play Console > API Access > Add Service Account and grant **Google Service Account** permission to create a service account that is connected to the google play console. Then go to the service account's settings and create a JSON key to login to google play with the service account. Download this JSON key to your computer and save the file's absolute path.
+
+Create a keystore to sign android app using android studio. This keystore should also be encrypted and pushed to git.
+
+#### Note : 
+* To upload to the appstore, the app must be signed with a iOS Distribution certificate
+* Provisioning profile must link with the app's bundle id and iOS Distribution certificate
+* Service accounts needs to be granted service account permission to appear on Google Play Console
+
+# Pipeline
+## Important passwords to save
+* Login name and password of bitbucket or api key
+* Apple App-specific Password to deploy to testflight
+* JSON key of service account to login to google play console
+* path to keystore file and keystore password
+
+## Secret text
+Jenkins has an encrypted password storage environment at **Manage Jenkins** > **Credentials**. Add the passwords and set the key to save as an environment variable to be fetched in Jenkinsfile
+
+## Fastfile
+Fastlane uses small script blocks called `lane` along with `action` to do tasks according to user requirements. The lanes are declared in the fastfile and then called with the command
+```
+bundle exec fastlane <lane>
+```
+with `<lane>` the declared name of the lane in Fastfile.
+
+#### Lane: Bump build number 
+#### Note: flutter app
+For flutter apps, the version code and build number are stored in the pubspec.yaml file and synced with the mobile app when flutter build is run. Currently, fastlane does not support version handling for flutter and does not recommend using the `increment_build_number`, `increment_version_number` actions because it will lose version synchronization between platforms. To manage the version and build number for projects using flutter, add a custom action at the link below [here](https://gitlab.com/anhdv282/one_farm/-/raw/cicd_dev_1.0_new/one_farm/ios/fastlane/ actions /increment_version_code_android.rb) to the fastlane/actions directory. This action is then called with the parameter being the path to the pubspec.yaml file and the current build number (optional: if there is no build_number parameter, the build number found in the pubspec.yaml file will be incremented by 1). The example below finds the largest build number on the Appstore and Google Play and then increases the build number by 1.
+
+
+
+```ruby
+desc "increase build number"
+lane :increment_flutter_version_code do |options| # specifying version, defaults to 1.0
+    print "options: #{options}"
+    if options[:is_ci] then
+        json_key_location = options[:json_key]
+    else
+        json_key_location = ENV['JSON_KEY_LOCATION']
+    end
+    version = options[:version] ? options[:version] : "1.0.0" # defaults to 1.0.0
+    ci_track = options[:track] ? options[:track] : "internal" # defaults to internal
+    ci_package_name = options[:package_name] ? options[:package_name] : "<bundle_id>"
+    if options[:is_ci] then
+        sh("git status --porcelain")
+        # ensure_git_status_clean   
+    end 
+    print "version: #{version}"
+
+    ios_build = latest_testflight_build_number(version: version)
+    android_build = google_play_track_version_codes(
+        track: ci_track,
+        json_key: json_key_location,
+        package_name: ci_package_name)
+
+    print "build: #{ios_build}, #{android_build}"
+    current_dir = sh("pwd").strip
+
+    increment_version_code_android(
+      config_file_path: "#{current_dir}/../../pubspec.yaml",
+      build_number: [Actions.lane_context[Actions::SharedValues::LATEST_BUILD_NUMBER], Actions.lane_context[Actions::SharedValues::LATEST_TESTFLIGHT_BUILD_NUMBER]].max
     )
 end
 ```
-> Note: since jenkins works with git in a detached HEAD state, a local_branch option is required
-#### Build and sign with gym
-Note: The default build method for gym is app-store 
+
+replace `<bundle_id>` with the bundle id of the app. lane will be called with the parameters is_ci, version, ci_track, ci_package_name
+
+```sh
+bundle exec fastlane increment_flutter_version_code is_ci:true version:1.0.0 ci_track:internal ci_package_name:<bundle_id>
+```
+
+#### Lane: build ios
 ```ruby
 desc "Build and sign the app using an ios distribution profile"
-lane :build do
-# pre-build actions (increment build and version number, git status check, setup variables to compute build time, ...)
+lane :build do |options| # Lane is run AFTER flutter build ios  
+    is_ci = options[:is_ci]
+    update_code_signing_settings(path: "Runner.xcodeproj" ,use_automatic_signing: false)
+    # match(type: "appstore", readonly: true)
+    gym(
+      output_directory: "./build",
+      clean: true,
+      export_options:{
+        compileBitcode: false,
+        signingStyle: "manual",
+        provisioningProfiles: ENV['MATCH_PROVISIONING_PROFILE_MAPPING'],
+        export_method: "app-store"
+      }
+    )
 
-# change codesigning setting to manual
-update_code_signing_settings(path: "<path_to_xcodeproj>" ,use_automatic_signing: false)
+    print "IPA is at: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+    post_build(lane: "build")
+end
+```
 
-gym(
-  output_directory: "./build",
-  clean: true,                                      # clean build directory before building
-  export_options:{
-    compileBitcode: false,
-    signingStyle: "manual",
-    provisioningProfiles:{
-      "bundle_id": "provisioning profile"           # A mapping of bundle id -> provisioning profile
-    }
-  }
-)
-# post-build actions (commit changes and push back to remote, move your ipa to storage, send notifications, ...)
-```
-To run this lane in your CLI:
-```sh
-bundle exec fastlane 
-```
-In jenkins go to your pipeline **Configure** > **Build** and add a new build step `Execute shell`
-```sh
-#!/bin/bash
-start=$(date "+%s")
-bundle exec fastlane build
-end=$(date "+%s")
-echo "build finished in $((end-start)) s"
-```
-#### Testfilght distribution
+#### Lane: deploy to Testfilght 
 ```ruby
 desc "upload the app to testflight"
-lane :release do
-pilot(
-  ipa: "<path_to_ipa>",
-  skip_waiting_for_build_processing: true # If you don't have admin access to the app setting this to false will cause your pipeline to fail due to insufficient permission
-)
-# post_release actions
-end
-```
-run this lane in CLI
-```sh
-bundle exec fastlane release
-```
-Add another `Execute shell` build step in jenkins
-```sh
-#!/bin/bash
-bundle exec fastlane release
-```
-## Build a pipeline for Android
-### Setup
-#### Pre-requisites
-1. Make sure jenkins is running by navigate to `http://localhost:8080` on your browser.
-2. Check your fastlane installation: 
-```shell
-bundle update
-bundle exec fastlane --version
-```
-3. Have a ready-to-build and deploy android app in Android Studio
-4. Have a service account with at least **Project Lead** permission in google play store
-5. Have the json key of said service account stored as credentials in jenkins
-> The process of adding service accounts and generate a JSON key can be followed [here](https://docs.fastlane.tools/getting-started/android/setup/) at **Setting up supply** section
-
-#### Jenkins-android
-Since jenkins configuration is similar for both android and ios, follow [this](#jenkins-ios) section of the iOS pipeline
-
-### Fastlane
-Go to your project's root directory and run: 
-```sh
-bundle exec fastlane init
-```
-To add plugins such as `firebase_app_distribution` run
-```sh
-fastlane add_plugin firebase_app_distribution
-```
-### Sign APK
-#### Generate .jks key file
-> Follow the official tutorial on code signing: https://developer.android.com/studio/publish/app-signing
-
-After this process you should have a key file `<key-file-name>.jks` in your file system. Make sure to also store the `keystore-password`, the `key-alias` and the `key-password`
-#### Sign using Gradle action
-With fastlane you don't need to convert your jks key to p12 to store on Jenkins if it's available locally
-```ruby
-desc "build a release apk"
-lane :build_release do
-  gradle(
-    task: "assemble",
-    build_type: "Release",
-    print_command: false,
-    properties: {
-      "android.injected.signing.store.file" => "<path-to-key>",
-      "android.injected.signing.store.password" => "<keystore-password>",
-      "android.injected.signing.key.alias" => "<key-alias>",
-      "android.injected.signing.key.password" => "<key-password>",
-    }
-  )
-end
-```
-If you are not using fastlane you need to install jenkins's `Android_signing` plugin and store your key as a jenkins credential (under p12 file extension). A tutorial can be found [here](https://github.com/jenkinsci/android-signing-plugin)
-### Upload to Google Play Store
-```ruby
-desc "Upload to goolge play store"
-lane :upload do
-    sh("pwd")
-    Dir.chdir ".." do
-      sh("cp", "app/build/outputs/apk/release/app-release.apk", "myapplication.apk")
+lane :release do |options|
+    if options[:is_ci] then
+        print "Requires appleid_app_password to be set"
     end
-    upload_to_play_store(track: 'internal', apk: 'myapplication.apk', package_name: '<package_name>', release_status: 'draft')
-    # upload_to_play_store_internal_app_sharing(apk: 'myapplication.apk')
+    print "IPA is at: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+    
+    pilot(
+      ipa: lane_context[SharedValues::IPA_OUTPUT_PATH],
+      skip_waiting_for_build_processing: true
+    )
+
+    post_release
 end
 ```
-Note: 
-- You must upload manually for the first time onto any track for the `<package_name>` of your app to be registered and discoverable by fastlane. 
-- If an app is marked as `draft` on Google Play console you must specify `draft` as the release_status.
-- You cannot publish to Google Play app sharing if your app is not published
-- To publish your app you need to follow the **Getting Started** process on the app dashboard (Fill app informations, take screenshots, ...)
-- If an app is published on a given track you cannot make further changes to the apk on that track, you can still make changed to other tracks if your app is not released there.
 
-# Git 
+#### Note: The lanes must be called consecutively in a wrapper lane to be able to share the `lane_context` variables, if calling separately, the `release` lane will not find the `IPA_OUPUT_PATH variable. ` generated by gym:
 
-#### Build loop
-In Jenkins, use JSONpath to get push related information. They can be use to filter out commits that were not meant to trigger builds (Like version bump commits generated by fastlane). Some examples using `bitbucket web hooks`:
+```ruby
+lane :beta do |options|
+    # pre_build_match
+    build(is_ci: true)
+    test(lane: post_build)
+    release(is_ci: true)
+end
+```
+
+
+#### Lane: flutter build android 
+Flutter needs the key.properties file at root to automatically build and sign the apk. Since this file is not allowed to be tracked on git, Jenkins needs to create this file in a stage of the pipeline before building with flutter.
+
+```sh
+steps {
+    sh '''cd one_farm/android
+    echo "storePassword=$KEYSTORE_PASSWORD" > key.properties
+    echo "keyPassword=$KEYSTORE_PASSWORD"  >> key.properties
+    echo "keyAlias=upload" >> key.properties
+    echo "storeFile=$KEY_STORE_LOCATION" >> key.properties
+    cat key.properties'''
+}
+```
+
+```ruby
+desc "build apk"
+lane :build_apk do
+    current_dir = sh("pwd").strip
+    get_flutter_version_code(config_file_path: "#{current_dir}/../../pubspec.yaml")
+    sh("flutter build apk")  
+    post_build(lane: "build_apk")
+end
+```
+
+#### Lane: Upload to Google Play Store
+```ruby
+desc "Upload to Google play"
+lane :upload do |options|
+    type = options[:type] ? options[:type] : "aab"
+    track = options[:track] ? options[:track] : "internal"
+    release_status = options[:release_status] ? options[:release_status] : "draft"
+
+    if type == "aab"
+      sh("cp", "../../build/app/outputs/bundle/release/app-release.aab", "release.aab")
+          upload_to_play_store(track: track, aab: 'fastlane/release.aab', package_name: '<package_name>', release_status: release_status)
+
+    elsif type == "apk"
+      sh("cp", "../../build/app/outputs/flutter-apk/app-release.apk", "release.apk")
+      upload_to_play_store(track: track, apk: 'fastlane/release.apk', package_name: '<package_name>', release_status: release_status)
+    end
+    # upload_to_play_store_internal_app_sharing(apk: 'myapplication.apk')
+    post_release
+end
+```
+Replace `<package name>` with the package name of the app. lane will be called with the parameters type, track, release_status
+```sh
+bundle exec fastlane upload type:apk track:internal release_status:draft
+```
+
+#### Note:
+* App must be uploaded manually before using fastlane for the package name of the app to be registered on google play console
+* For unreleased apps, release_status must be `draft`
+* Apps that are not released can't be uploaded to internal_app_sharing
+* If the app has been released on a track, the apk on that track cannot be changed
+
+## Jenkinsfile
+Create a Jenkinsfile at the root of the repo, add basic stages like clone from git, build and release
+
+```sh
+pipeline {
+    agent any
+    
+    options {
+    	# Load các plugins
+        ansiColor('xterm')
+    }
+    
+    environment {
+    	# Load các secret text và chuyển thành biến môi trường
+        KEYSTORE_PASSWORD = credentials('keystore_password')
+        KEY_STORE_LOCATION = credentials('key_store_location')
+        JSON_KEY_FILE = credentials('json_key_file')
+        APPLEID_APP_PASSWORD = credentials('apple-application-password')
+        GITLAB_API_KEY = credentials('gitlab_api_key')
+        SCM_BRANCH = 'stc_vnpt_dev_0.9'  
+
+    }   
+    stages {
+        stage('Fetch repo') {
+            steps {
+                git branch: "$SCM_BRANCH", url: "https://stc.vnpt:$GITLAB_API_KEY@gitlab.com/anhdv282/one_farm.git"            
+            }
+        }
+        
+        stage('Build and deploy') {
+            
+            parallel {
+                stage('Build and deploy iOS') {
+                    stages {
+                        stage('Pre build iOS') {
+                            steps {
+                                # Setup everything necessary for build
+                            }
+                        }
+                        stage('build and sign iOS') {
+                            steps {
+                                # build and sign the ios app
+                            }
+                        }
+                        stage('Build and deploy to test flight') {
+                            steps {
+                                # Deploy to beta testing
+                            }    
+                        }
+                    }
+                }
+                
+                stage('Build and deploy Android') {
+                    stages {
+                        stage('set up') {
+                            steps {
+                                # Setup everything necessary for build
+                            }
+                        }
+                        stage('Build aab') {
+                            steps {
+                                # Build aab
+                            }
+                        }
+                        stage('Build apk') {
+                            steps {
+                                # build  apk
+                            }
+                        }
+                        stage('Upload google play') {
+                            steps {
+                                # Upload apk or aab to google play
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+    }
+}
+
+```
+
+## Tạo pipeline
+On Jenkins, go to **New item** > **Pipeline** to create a new pipeline. 
+
+## Generic Webhook Trigger 
+This Jenkins plugin uses a webhook to run the pipeline when it receives a post request from git. Webhook definition (`https://developer.github.com/webhooks/`):
+> Webhooks allow you to build or set up integrations, which subscribe to certain events. When one of those events is triggered, we'll send a HTTP POST payload to the webhook's configured URL. Webhooks can be used to update an external issue tracker, trigger CI builds, update a backup mirror, or even deploy to your production server. You're only limited by your imagination.
+
+### Post content parameter
+Webhooks from SCMs contain a lot of information regarding the repo and the latest commits. Jenkins uses JSON Path to save that information as environment variables. In the **Build Trigger** > **Generic Webhook Triggr** > **Post Content Parameter** > **Add** section of the pipeline settings. Add a variable `message` like this:
+
+![postparam](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/postparam.png)
+
+Some example JSON Path for bitbucket :
 * Author of the latest commit: `$.push.changes[0].new.target.author.raw`
 * remote repository: `$.repository.full_name`
-* current branch: `$.push.changes[0].new.name`
-* Information on the POST request sent to jenkins from a SCM can be obtain by reading their docs / using a proxy or a tunnel like [ngrok]
+* branch: `$.push.changes[0].new.name`
 
-The values need to be assigned to an environment variable (**Build Trigger** > **Generic webhook trigger** > **Add post content parameter**) and the variables can be used across the build process. 
-![jsonpath](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/jsonpath.png)
+### Filter
+In the **Optional filter** section, add a filter for the message variable to ignore webhooks from commits to increase fastlane's build number
 
-To prevent commits by fastlane to trigger a build loop, use a custom git `username` and `email` for jenkins, and filter out this jenkins username using `regex` in the **Optional filter** section
 ```
-expression: ^((?!(jenkins|placeholder)).)*$
-text: <your variable>
+Expression: ^((?!\[fastlane\]|\[skip ci]).)*$
+Text : $message
 ```
-![filter](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/filter.png)
 
-#### Useful tools
-* [Regexp] tester
-* [JSON path] finder
+![filter_message](https://raw.githubusercontent.com/Thanhphan1147/CI-CD-with-Jenkins/master/filter_message.png)
 
+After completing this step, press **Build now** to test the Pipeline then push to git to test the webhook.
+
+# Example Jenkinsfile and Fastfile for android and iOS deployment
+Jenkinsfile : 
+```ruby
+pipeline {
+    agent any
+    
+    options {
+        ansiColor('xterm')
+    }
+    
+    environment {
+        KEYSTORE_PASSWORD = credentials('keystore_password')
+        KEY_STORE_LOCATION = credentials('key_store_location')
+        JSON_KEY_FILE = credentials('json_key_file')
+        APPLEID_APP_PASSWORD = credentials('appleid_app_password')
+        GITLAB_API_KEY = credentials('gitlab_api_key')
+        SCM_BRANCH = 'dev_1.0_new'
+    }   
+    stages {
+        stage('Fetch repo') {
+            steps {
+                git branch: 'dev_1.0_new', url: 'https://Thanhphan1147:$GITLAB_API_KEY@gitlab.com/anhdv282/one_farm.git'            
+                sh('pwd')
+                script {
+                    currentBuild.description = "branch: $SCM_BRANCH"
+                    currentBuild.displayName = "ONE Farm CI: Pending..."
+                }
+            }
+        }
+        stage('Bump build number') {
+            steps {
+                sh '''cd one_farm/ios
+                bundle update
+                bundle update fastlane
+                bundle exec fastlane ios increment_flutter_version_code is_ci:true json_key:$JSON_KEY_FILE track:internal
+                bundle exec fastlane write_label
+                '''
+                script {
+                    def label = readFile(file: 'one_farm/buildlabel.txt')
+                    println(label)
+                    currentBuild.displayName = label
+                    currentBuild.description = "branch: $SCM_BRANCH"
+                }
+            }
+        }
+        stage('Build') {
+            parallel {
+                stage('Build and deploy iOS') {
+                    stages {
+                        stage('Pre build iOS') {
+                            steps {
+                                sh '''cd one_farm/ios
+                                bundle exec fastlane ios pre_build is_ci:true'''   
+                            }
+                        }
+                        stage('Flutter build iOS') {
+                            steps {
+                                sh'''cd one_farm/ios
+                                flutter build ios --release --no-codesign'''
+                            }
+                        }
+                        stage('Build and deploy to test flight') {
+                            steps {
+                                sh '''cd one_farm/ios
+                                # bundle exec fastlane beta is_ci:true
+                                '''
+                            }    
+                        }
+                    }
+                }
+                
+                stage('Build and deploy Android') {
+                    stages {
+                        stage('set up') {
+                            steps {
+                                sh'''cd one_farm/android
+                                bundle --version
+                                # bundle update'''
+                            }
+                        }
+                        stage('Write keystore config') {
+                            steps {
+                                sh '''cd one_farm/android
+                                echo "storePassword=$KEYSTORE_PASSWORD" > key.properties
+                                echo "keyPassword=$KEYSTORE_PASSWORD"  >> key.properties
+                                echo "keyAlias=upload" >> key.properties
+                                echo "storeFile=$KEY_STORE_LOCATION" >> key.properties
+                                cat key.properties'''
+                            }
+                        }
+                        stage('Flutter build aab') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                bundle exec fastlane build_aab is_ci:true'''
+                            }
+                        }
+                        stage('Flutter build apk') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                bundle exec fastlane build_apk is_ci:true'''
+                            }
+                        }
+                        stage('Upload google play') {
+                            steps {
+                                sh '''pwd
+                                cd one_farm/android
+                                bundle exec fastlane upload is_ci:true type:apk'''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build OTA for in-house distribution') {
+            stages {
+                stage('Pre build iOS') {
+                    steps {
+                        sh '''cd one_farm/ios
+                        flutter build ios --release --no-codesign'''   
+                    }
+                }
+                stage('Build OTA') {
+                    steps {
+                        sh '''cd one_farm/ios
+                        bundle exec fastlane build_ota is_ci:true'''   
+                    }
+                }
+            }
+            
+        }
+        
+        stage('Wrapping up') {
+            steps {
+                sh '''
+                git add one_farm/pubspec.yaml
+                git commit -m "[skip-ci] [fastlane] update build number"
+                git reflog
+                git remote
+                git branch
+                git pull origin $SCM_BRANCH
+                git status --porcelain
+                # git push origin $SCM_BRANCH
+                '''
+            }
+        }
+    }
+}
+
+```
+Fastfile android : 
+```ruby
+update_fastlane
+default_platform(:android)
+
+platform :android do
+
+  lane :bump_major do
+    current_dir = sh("pwd")
+
+    flutter_version_manager(
+      arguments: "-major",
+      yml: "#{current_dir}/../../version.yml",
+      pubspec: "#{current_dir}/../../pubspec.yaml")
+  end
+
+  lane :bump_minor do
+    current_dir = sh("pwd")
+
+    flutter_version_manager(
+      arguments: "-minor",
+      yml: "#{current_dir}/../../version.yml",
+      pubspec: "#{current_dir}/../../pubspec.yaml")
+  end
+
+  lane :bump_patch do
+    current_dir = sh("pwd")
+    
+    flutter_version_manager(
+      arguments: "-patch",
+      yml: "#{current_dir}/../../version.yml",
+      pubspec: "#{current_dir}/../../pubspec.yaml")
+  end
+  
+  desc "build aab"
+  lane :build_aab do
+    current_dir = sh("pwd").strip
+    get_flutter_version_code(config_file_path: "#{current_dir}/../../pubspec.yaml")
+    sh("flutter build appbundle")
+    post_build(lane: "build_aab")  
+  end
+
+  desc "build apk"
+  lane :build_apk do
+    current_dir = sh("pwd").strip
+    get_flutter_version_code(config_file_path: "#{current_dir}/../../pubspec.yaml")
+    sh("flutter build apk")  
+    post_build(lane: "build_apk")
+  end
+
+  desc "Upload to Google play"
+  lane :upload do |options|
+    type = options[:type] ? options[:type]:"aab"
+    track = options[:track] ? options[:track]:"internal"
+    release_status = options[:release_status] ? options[:release_status]:"draft"
+
+    if type == "aab"
+      sh("cp", "../../build/app/outputs/bundle/release/app-release.aab", "release.aab")
+          upload_to_play_store(track: track, aab: 'fastlane/release.aab', package_name: '****', release_status: release_status)
+
+    elsif type == "apk"
+      sh("cp", "../../build/app/outputs/flutter-apk/app-release.apk", "release.apk")
+      upload_to_play_store(track: track, apk: 'fastlane/release.apk', package_name: '****', release_status: release_status)
+    end
+    # upload_to_play_store_internal_app_sharing(apk: 'myapplication.apk')
+    post_release
+  end
+
+  private_lane :post_build do |options|
+    build_number = Actions.lane_context[SharedValues::FLUTTER_BUILD_NUMBER]
+    version_code = Actions.lane_context[SharedValues::FLUTTER_VERSION_CODE]
+
+    apache_root = "/usr/local/var/www"
+    archive_dir_prefix = "#{apache_root}/download/android"
+    app_prefix = "build-#{build_number}"
+    current_dir = sh("pwd").strip
+    sh("mkdir", "-p", "#{archive_dir_prefix}/apk/#{version_code}", "#{archive_dir_prefix}/aab/#{version_code}")
+
+    if options[:lane] == "build_apk"
+      sh("cp", "#{current_dir}/../../build/app/outputs/flutter-apk/app-release.apk", "#{archive_dir_prefix}/apk/#{version_code}/#{app_prefix}.apk")
+    elsif options[:lane] == "build_aab"
+      sh("cp", "#{current_dir}/../../build/app/outputs/bundle/release/app-release.aab", "#{archive_dir_prefix}/aab/#{version_code}/#{app_prefix}.aab")
+    end
+
+    print "Build status: Build #{version_code}+#{build_number} finished successfully"
+    notification(
+      title: "Build status",
+      message: "Build '#{version_code}+#{build_number}' finished successfully",
+      open: "http://localhost:8080"
+    )
+  end
+
+  private_lane :post_release do |options|
+    print "successfully uploaded to Google play"
+    notification(
+      title: "Google Play Upload status",
+      message: "successfully uploaded to google play"
+    ) # Mac OS X Notification
+  end
+
+  error do |lane, exception|
+    print "error in lane #{lane}: #{exception}"
+    notification(
+      title: "Build error",
+      message: "Error occured in lane : '#{lane}': #{exception}"
+    )
+  end
+end
+```
+Fastfile iOs : 
+```ruby
+update_fastlane
+default_platform :ios
+
+platform :ios do
+
+  ### PRE BUILD ###
+  desc "Pull certificate information from app store connect"
+  lane :pre_build_match do
+    match(type: "appstore", readonly: true)
+  end
+
+  desc "increase build number"
+  lane :increment_flutter_version_code do |options| # specifying version, defaults to 1.0
+    print "options: #{options}"
+    if options[:is_ci] then
+        json_key_location = options[:json_key]
+    else
+        json_key_location = ENV['JSON_KEY_LOCATION']
+    end
+    version = options[:version] ? options[:version] : "1.0.0" # defaults to 1.0.0
+    ci_track = options[:track] ? options[:track] : "internal" # defaults to internal
+    ci_package_name = options[:package_name] ? options[:package_name] : "***" # default to onefarm
+    
+    if options[:is_ci] then
+        sh("git status --porcelain")
+        # ensure_git_status_clean   
+    end 
+    print "version: #{version}"
+    
+    ios_build = latest_testflight_build_number(version: version)
+    android_build = google_play_track_version_codes(
+        track: ci_track,
+        json_key: json_key_location,
+        package_name: ci_package_name)
+    
+    print "build: #{ios_build}, #{android_build}"
+    current_dir = sh("pwd").strip
+    
+    increment_version_code_android(
+      config_file_path: "#{current_dir}/../../pubspec.yaml",
+      build_number: [Actions.lane_context[Actions::SharedValues::LATEST_BUILD_NUMBER], Actions.lane_context[Actions::SharedValues::LATEST_TESTFLIGHT_BUILD_NUMBER]].max
+    )
+  end
+
+  desc "pre build setup"
+  lane :pre_build do
+    pre_build_match
+  end
+
+  desc "write version_code and build_number to jenkins"
+  lane :write_label do
+    current_dir = sh("pwd").strip
+    get_flutter_version_code(config_file_path: "#{current_dir}/../../pubspec.yaml")
+    File.open("#{current_dir}/../../buildlabel.txt", "w") { |f| f.write "ONE Farm CI: release-#{Actions.lane_context[SharedValues::FLUTTER_VERSION_CODE]}+#{Actions.lane_context[SharedValues::FLUTTER_BUILD_NUMBER]}" }
+  end
+
+  ### LANES ### 
+
+  lane :test do |options|
+    version = options[:version] ? options[:version] : "1.0.0"
+    ci_track = options[:track] ? options[:track] : "internal" # defaults to internal
+    ci_package_name = options[:package_name] ? options[:package_name] : "****" # default to onefarm
+
+    ios_build = latest_testflight_build_number(version: version)
+    android_build = google_play_track_version_codes(
+        track: ci_track,
+        json_key: json_key_location,
+        package_name: ci_package_name)
+
+    print "#{Actions.lane_context[Actions::SharedValues::LATEST_TESTFLIGHT_BUILD_NUMBER]}"
+    print "#{[Actions.lane_context[Actions::SharedValues::LATEST_BUILD_NUMBER], Actions.lane_context[Actions::SharedValues::LATEST_TESTFLIGHT_BUILD_NUMBER]].max}"
+  end
+
+  lane :beta do |options|
+    # pre_build_match
+    build(is_ci: true)
+    test(lane: post_build)
+    release(is_ci: true)
+  end
+
+  desc "Build and sign the app using an ios distribution profile"
+  lane :build do |options| # Lane is run AFTER flutter build ios  
+    is_ci = options[:is_ci]
+    update_code_signing_settings(path: "Runner.xcodeproj" ,use_automatic_signing: false)
+    # match(type: "appstore", readonly: true)
+    gym(
+      output_directory: "./build",
+      clean: true,
+      export_options:{
+        compileBitcode: false,
+        signingStyle: "manual",
+        provisioningProfiles: ENV['MATCH_PROVISIONING_PROFILE_MAPPING'],
+        export_method: "app-store"
+      }
+    )
+
+    print "IPA is at: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+    post_build(lane: "build")
+  end
+
+  desc "Build and sign the app using an ios ad-hoc profile"
+  lane :build_ota do |options| # Lane is run AFTER flutter build ios  
+    current_dir = sh("pwd").strip
+    get_flutter_version_code(config_file_path: "#{current_dir}/../../pubspec.yaml")
+
+    is_ci = options[:is_ci]
+    update_code_signing_settings(path: "Runner.xcodeproj" ,use_automatic_signing: false)
+    match(type: "adhoc", readonly: true)
+    gym(
+      output_directory: "./build",
+      clean: true,
+      export_options:{
+        compileBitcode: false,
+        signingStyle: "manual",
+        provisioningProfiles: ENV['MATCH_PROVISIONING_PROFILE_MAPPING'],
+        export_method: "ad-hoc"
+      }
+    )
+
+    print "IPA is at: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+    post_build(lane: "build_ota")
+
+  end
+
+  #### distribution lane ####
+
+  desc "upload the app to testflight"
+  lane :release do |options|
+    if options[:is_ci] then
+        print "Requires appleid_app_password to be set"
+    end
+    print "IPA is at: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+    pilot(
+      ipa: lane_context[SharedValues::IPA_OUTPUT_PATH],
+      skip_waiting_for_build_processing: true
+    )
+
+    post_release
+  end
+
+  ### POST BUILD ###
+
+  # This lane is called, only if the executed lane was successful
+  private_lane :post_build do |options|
+    lane = options[:lane]
+
+    sh("echo", "Running post build actions")
+    build = Actions.lane_context[Actions::SharedValues::FLUTTER_BUILD_NUMBER]
+    
+    if lane == "build_ota" then
+        build_number = Actions.lane_context[SharedValues::FLUTTER_BUILD_NUMBER]
+        version_code = Actions.lane_context[SharedValues::FLUTTER_VERSION_CODE]
+        ipa_name = "build-#{build_number}.ipa"
+        release_dir = "/usr/local/var/www/download/ios/#{version_code}"
+        
+        sh("mkdir", "-p", "#{release_dir}")
+        sh("cp", "#{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]}", "#{release_dir}/#{ipa_name}")
+
+        apache_root = "/usr/local/var/www"
+        manifest_file_path = "#{apache_root}/manifest.plist"
+        ipa_path_regexp = /^(\s*)(<string>http:\/\/)(\d+\.\d+\.\d+\.\d+)\/download\/ios\/(\d+.\d+.\d+)\/(.+.ipa)<\/string>$/
+        version_code_regexp = /^(\s*)(<string>)(\d+\.\d+\.\d+)(<\/string>)$/
+        Tempfile.open(".#{File.basename(manifest_file_path)}", File.dirname(manifest_file_path)) do |tempfile|
+            File.open(manifest_file_path).each do |line|
+                if line[ipa_path_regexp] then
+                    tempfile.puts line.gsub(ipa_path_regexp) { |s| $1 + $2 + $3 + "/download/ios/#{version_code}/#{ipa_name}</string>" }
+                elsif line[version_code_regexp] then
+                    tempfile.puts line.gsub(version_code_regexp) { |s| $1 + $2 + "#{version_code}" + $4 }
+                else
+                    tempfile.puts line
+                end
+            end
+            tempfile.close
+            FileUtils.mv tempfile.path, "#{release_dir}/manifest.plist"
+        end 
+    end
+
+    notification(
+      title: "Build status",
+      message: "Build '#{build}' on lane #{lane} finished successfully",
+      open: "http://localhost:8080"
+    ) # Mac OS X Notification
+  end
+
+  private_lane :post_release do
+    print "uploaded ipa: #{Actions.lane_context[SharedValues::IPA_OUTPUT_PATH]} to testflight"
+    notification(
+      title: "TestFlight upload status",
+      message: "successfully uploaded to testflight",
+      open: "http://localhost:8080"
+    ) # Mac OS X Notification
+  end
+
+  error do |lane, exception|
+    print "Build error in lane #{lane}: #{exception}"
+    notification(
+      title: "Build error",
+      message: "Error occured in lane : '#{lane}', #{exception}"
+    )
+  end
+
+end
+```
 
 [//]: # (These are reference links used in the body of this note and get stripped out when the markdown processor does its job. There is no need to format nicely because it shouldn't be seen. Thanks SO - http://stackoverflow.com/questions/4823468/store-comments-in-markdown-syntax)
    
